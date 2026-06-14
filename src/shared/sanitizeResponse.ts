@@ -1,16 +1,9 @@
 import { RefinedAspects, RefineResponse } from '../types';
-import { PURE_GREETINGS, GREETING_RESPONSE } from './constants';
-
-export function isPureGreeting(text: string): boolean {
-  if (!text) return false;
-  const trimmed = text.trim().toLowerCase().replace(/[.,\/#!$%^&*;:{}=_`~()?]/g, '');
-  return PURE_GREETINGS.includes(trimmed);
-}
 
 export function sanitizeRefineResponse(payload: any): RefineResponse {
   if (!payload || typeof payload !== 'object') {
     return {
-      message: GREETING_RESPONSE,
+      message: 'Could not process the response. Please try again.',
       aspects: {},
       progressScore: 0,
       isCompleted: false,
@@ -20,7 +13,7 @@ export function sanitizeRefineResponse(payload: any): RefineResponse {
 
   const rawAspects = payload.aspects || {};
   const primaryGoal = typeof rawAspects.primaryGoal === 'string' ? rawAspects.primaryGoal.trim() : '';
-  const cleanGoal = (primaryGoal && !isPureGreeting(primaryGoal)) ? primaryGoal : '';
+  const cleanGoal = primaryGoal || '';
 
   const sanitizedAspects: RefinedAspects = {
     primaryGoal: cleanGoal,

@@ -1,12 +1,10 @@
 import { ChatMessage, IdeaState, RefinedAspects, RefineResponse } from "../types";
 import {
-  isPureGreeting,
   repairJson,
   getSystemInstruction,
   buildClaudeMessages,
   buildOpenAIMessages,
   buildGeminiContents,
-  GREETING_RESPONSE,
   formatApiError,
   sanitizeRefineResponse
 } from "../shared";
@@ -18,29 +16,42 @@ import { getAlternatingMessages } from "../shared/messageUtils";
 export async function handleOnlineRefine(
   messages: ChatMessage[],
   currentState: IdeaState,
-  keys: { gemini: string; openai: string; claude: string },
+  keys: { gemini: string; openai: string; claude: string; zen: string },
   forceComplete: boolean = false
 ): Promise<RefineResponse> {
   const targetModel = currentState.targetModel || 'general';
-  const operationalIdea = (currentState.originalIdea && !isPureGreeting(currentState.originalIdea))
-    ? currentState.originalIdea : (messages[0]?.content || '');
-
-  if (isPureGreeting(operationalIdea) && messages.length <= 1) {
-    return { message: GREETING_RESPONSE, aspects: {}, progressScore: 0, isCompleted: false, finalPrompt: null };
-  }
+  const operationalIdea = currentState.originalIdea || (messages[0]?.content || '');
 
   const systemInst = getSystemInstruction(targetModel);
   const alternating = getAlternatingMessages(messages);
   const errors: string[] = [];
 
+  // First, try the server endpoint ONCE (avoids duplicate requests)
+  try {
+    const serverRes = await fetch("/api/refine", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        idea: operationalIdea,
+        messages,
+        customGeminiKey: keys.gemini,
+        customOpenAIKey: keys.openai,
+        customClaudeKey: keys.claude,
+        customZenKey: keys.zen,
+        targetModel,
+        forceGenerate: forceComplete
+      })
+    });
+    if (serverRes.ok) return await serverRes.json();
+    // If server fails, fall through to direct API calls below
+  } catch (serverErr: any) {
+    // Server unavailable, fall through to direct API calls
+  }
+
+  // Direct API fallback (only used if server endpoint fails)
   async function tryClaude(): Promise<RefineResponse | null> {
     if (!keys.claude) return null;
     try {
-      const serverRes = await fetch("/api/refine", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea: operationalIdea, messages, customGeminiKey: keys.gemini, customOpenAIKey: keys.openai, customClaudeKey: keys.claude, targetModel, forceGenerate: forceComplete })
-      });
-      if (serverRes.ok) return await serverRes.json();
       const claudeMsg = buildClaudeMessages(alternating, forceComplete);
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -58,11 +69,6 @@ export async function handleOnlineRefine(
   async function tryOpenAI(): Promise<RefineResponse | null> {
     if (!keys.openai) return null;
     try {
-      const serverRes = await fetch("/api/refine", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea: operationalIdea, messages, customGeminiKey: keys.gemini, customOpenAIKey: keys.openai, customClaudeKey: keys.claude, targetModel, forceGenerate: forceComplete })
-      });
-      if (serverRes.ok) return await serverRes.json();
       const openAIMsg = buildOpenAIMessages(alternating, systemInst, forceComplete);
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -78,17 +84,18 @@ export async function handleOnlineRefine(
   async function tryGemini(): Promise<RefineResponse | null> {
     if (!keys.gemini) return null;
     try {
-      const serverRes = await fetch("/api/refine", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea: operationalIdea, messages, customGeminiKey: keys.gemini, customOpenAIKey: keys.openai, customClaudeKey: keys.claude, targetModel, forceGenerate: forceComplete })
-      });
-      if (serverRes.ok) return await serverRes.json();
+      const cleanKey = keys.gemini.replace(/[^\x20-\x7E]/g, '').trim();
+      if (!cleanKey) { errors.push('Gemini: Invalid API key format'); return null; }
+      if (!cleanKey.startsWith('AIzaSy') && !cleanKey.startsWith('AQ.')) {
+        errors.push('Gemini: Invalid API key format (expected AIzaSy or AQ. prefix)');
+        return null;
+      }
       const geminiContents = buildGeminiContents(alternating, forceComplete);
-      const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+      const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"];
       let lastErr: Error | null = null;
       for (const model of models) {
         try {
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${keys.gemini}`;
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
           const res = await fetch(url, {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -106,35 +113,99 @@ export async function handleOnlineRefine(
               }}
             })
           });
-          if (!res.ok) throw new Error(formatApiError(res.status, await res.text()));
+          if (!res.ok) {
+            const errorText = await res.text();
+            lastErr = new Error(formatApiError(res.status, errorText));
+            console.warn(`Gemini model ${model} failed:`, res.status, errorText);
+            continue;
+          }
           const data = await res.json();
           const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
           if (!rawText) throw new Error("No response from Gemini.");
           return sanitizeRefineResponse(JSON.parse(repairJson(rawText.trim())));
         } catch (err: any) {
           lastErr = err;
-          if (err.message.includes('Rate limit') || err.message.includes('quota')) break;
+          console.warn(`Gemini model ${model} failed:`, err.message);
         }
       }
-      if (lastErr) throw lastErr;
+      if (lastErr) {
+        errors.push(`Gemini: ${lastErr.message}`);
+      }
       return null;
-    } catch (err: any) { errors.push(`Gemini: ${err.message}`); return null; }
+    } catch (err: any) {
+      errors.push(`Gemini: ${err.message}`);
+      return null;
+    }
   }
 
-  // Provider fallback chain
+  async function tryZen(): Promise<RefineResponse | null> {
+    if (!keys.zen) return null;
+    try {
+      const cleanKey = keys.zen.replace(/[^\x20-\x7E]/g, '').trim();
+      if (!cleanKey) { errors.push('Zen: Invalid API key format'); return null; }
+      const openAIMsg = buildOpenAIMessages(alternating, systemInst, forceComplete);
+      try {
+        const res = await fetch("https://opencode.ai/zen/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${cleanKey}` },
+          body: JSON.stringify({ model: "big-pickle", response_format: { type: "json_object" }, messages: openAIMsg })
+        });
+        if (!res.ok) throw new Error(formatApiError(res.status, JSON.stringify(await res.json().catch(() => ({})))));
+        const data = await res.json();
+        return sanitizeRefineResponse(JSON.parse(repairJson(data.choices[0].message.content.trim())));
+      } catch (netErr: any) {
+        if (netErr.message?.includes('fetch') || netErr.message?.includes('NetworkError') || netErr.name === 'TypeError') {
+          throw new Error('Zen: Network unavailable - opencode.ai may be down or unreachable');
+        }
+        throw netErr;
+      }
+    } catch (err: any) { errors.push(`Zen: ${err.message}`); return null; }
+  }
+
+  // Provider fallback chain - only include Zen when explicitly selected
+  const gemini = { name: 'Gemini', fn: tryGemini };
+  const openai = { name: 'OpenAI', fn: tryOpenAI };
+  const claude = { name: 'Claude', fn: tryClaude };
+  const zen = { name: 'Zen', fn: tryZen };
+
+  let orderedProviders: Array<{ name: string; fn: () => Promise<RefineResponse | null> }>;
   if (targetModel === 'claude') {
-    const result = await tryClaude() ?? await tryOpenAI() ?? await tryGemini();
-    if (result) return result;
+    orderedProviders = [claude, openai, gemini];
   } else if (targetModel === 'gpt') {
-    const result = await tryOpenAI() ?? await tryGemini() ?? await tryClaude();
-    if (result) return result;
+    orderedProviders = [openai, gemini, claude];
+  } else if (targetModel === 'zen') {
+    orderedProviders = [zen, gemini, openai, claude];
   } else {
-    const result = await tryGemini() ?? await tryOpenAI() ?? await tryClaude();
-    if (result) return result;
+    // gemini or general - try gemini first, then mainstream providers, skip zen
+    orderedProviders = [gemini, openai, claude];
   }
 
-  const summary = errors.length > 0
-    ? `All AI providers failed: ${errors.join('; ')}. Check your API keys in Settings.`
-    : "No AI providers configured. Please add an API key in Settings.";
-  throw new Error(summary);
+  // Try each provider sequentially until one succeeds
+  for (const provider of orderedProviders) {
+    try {
+      const result = await provider.fn();
+      if (result) return result;
+    } catch (err) {
+      // Continue to next provider
+    }
+  }
+
+  // Build a helpful error message based on what happened
+  const configuredProviders = orderedProviders.filter(p => {
+    if (p.name === 'Gemini') return !!keys.gemini;
+    if (p.name === 'OpenAI') return !!keys.openai;
+    if (p.name === 'Claude') return !!keys.claude;
+    if (p.name === 'Zen') return !!keys.zen;
+    return false;
+  }).map(p => p.name);
+  
+  if (configuredProviders.length === 0) {
+    throw new Error("No AI providers configured. Please add an API key in Settings.");
+  }
+  
+  if (errors.length > 0) {
+    throw new Error(`All AI providers failed: ${errors.join('; ')}. Configured providers: ${configuredProviders.join(', ')}. Check your API keys in Settings.`);
+  } else {
+    throw new Error("No AI providers responded. Configured: " + configuredProviders.join(', ') + ". Check your API keys in Settings.");
+  }
 }
