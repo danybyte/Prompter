@@ -21,7 +21,7 @@ export interface IdeaState {
   progressScore: number; // 0 to 100
   isCompleted: boolean;
   finalPrompt: string | null;
-  targetModel: 'gemini' | 'gpt' | 'claude' | 'zen';
+  targetModel: 'gemini';
 }
 
 export interface RefineResponse {

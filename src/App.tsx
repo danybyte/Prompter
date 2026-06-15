@@ -177,15 +177,6 @@ export default function App() {
   const [customGeminiKey, setCustomGeminiKey] = useState<string>(() => {
     return localStorage.getItem(LOCAL_STORAGE_KEYS.geminiKey) || "";
   });
-  const [customOpenAIKey, setCustomOpenAIKey] = useState<string>(() => {
-    return localStorage.getItem(LOCAL_STORAGE_KEYS.openaiKey) || "";
-  });
-  const [customClaudeKey, setCustomClaudeKey] = useState<string>(() => {
-    return localStorage.getItem(LOCAL_STORAGE_KEYS.claudeKey) || "";
-  });
-  const [customZenKey, setCustomZenKey] = useState<string>(() => {
-    return localStorage.getItem(LOCAL_STORAGE_KEYS.zenKey) || "";
-  });
 
   // Settings customizable options
   const [theme, setTheme] = useState<string>(() => {
@@ -221,18 +212,6 @@ export default function App() {
   const applyGeminiKey = (value: string) => {
     setCustomGeminiKey(value);
     localStorage.setItem(LOCAL_STORAGE_KEYS.geminiKey, value);
-  };
-  const applyOpenAIKey = (value: string) => {
-    setCustomOpenAIKey(value);
-    localStorage.setItem(LOCAL_STORAGE_KEYS.openaiKey, value);
-  };
-  const applyClaudeKey = (value: string) => {
-    setCustomClaudeKey(value);
-    localStorage.setItem(LOCAL_STORAGE_KEYS.claudeKey, value);
-  };
-  const applyZenKey = (value: string) => {
-    setCustomZenKey(value);
-    localStorage.setItem(LOCAL_STORAGE_KEYS.zenKey, value);
   };
 
   // Detection of system-configured Gemini API key on the backend
@@ -319,7 +298,7 @@ export default function App() {
   };
 
   // Helper selectors
-  const isConfigured = hasSystemKey || !!(customGeminiKey || customOpenAIKey || customClaudeKey || customZenKey);
+  const isConfigured = hasSystemKey || !!customGeminiKey;
   const activeTheme = darkMode
     ? (themes[theme]?.dark || themes.sage.dark)
     : (themes[theme]?.light || themes.sage.light);
@@ -484,9 +463,9 @@ export default function App() {
     const operationalIdea = ideaState.originalIdea || finalInput;
 
     try {
-      const hasKey = hasSystemKey || !!(customGeminiKey || customOpenAIKey || customClaudeKey || customZenKey);
+      const hasKey = hasSystemKey || !!customGeminiKey;
       if (!hasKey) {
-        throw new Error("No API key configured. Please add an API key in Settings.");
+        throw new Error("No API key configured. Please add a Gemini API key in Settings.");
       }
 
       const data = await handleOnlineRefine(
@@ -496,10 +475,7 @@ export default function App() {
           originalIdea: operationalIdea
         },
         {
-          gemini: customGeminiKey,
-          openai: customOpenAIKey,
-          claude: customClaudeKey,
-          zen: customZenKey
+          gemini: customGeminiKey
         },
         forceComplete
       );
@@ -531,16 +507,10 @@ export default function App() {
       const errMsg = err.message || "Failed to contact refinement server.";
       
       // Show API key alert for provider-specific errors
-      if (errMsg.includes('Claude') || errMsg.includes('Anthropic')) {
-        setWarningMsg("Your Claude (Anthropic) API key may be invalid or expired. Please check or update it in Settings.");
-      } else if (errMsg.includes('OpenAI')) {
-        setWarningMsg("Your OpenAI API key may be invalid or expired. Please check or update it in Settings.");
-      } else if (errMsg.includes('Gemini') || errMsg.includes('Google')) {
+      if (errMsg.includes('Gemini') || errMsg.includes('Google')) {
         setWarningMsg("Your Gemini API key may be invalid or expired. Please check or update it in Settings.");
-      } else if (errMsg.includes('Zen') || errMsg.includes('opencode')) {
-        setWarningMsg("Your Opencode Zen API key may be invalid or expired. Please check or update it in Settings.");
-      } else if (errMsg.includes('All AI providers failed') || errMsg.includes('Check your API keys')) {
-        setWarningMsg("All AI providers failed. Please check your API keys in Settings.");
+      } else {
+        setWarningMsg("Failed to contact AI service. Please check your API key in Settings.");
       }
       
       const errorMessage: ChatMessage = {
@@ -573,10 +543,10 @@ export default function App() {
     }
   };
 
-  const handleModelChange = async (model: 'gemini' | 'gpt' | 'claude' | 'zen') => {
+  const handleModelChange = async (model: 'gemini') => {
     setIdeaState(prev => ({ ...prev, targetModel: model }));
 
-    const hasKey = hasSystemKey || !!(customGeminiKey || customOpenAIKey || customClaudeKey || customZenKey);
+    const hasKey = hasSystemKey || !!customGeminiKey;
     if (messages.length > 0 && hasKey) {
       setLoadingSessionId(activeSessionId);
       try {
@@ -587,10 +557,7 @@ export default function App() {
             targetModel: model
           },
           {
-            gemini: customGeminiKey,
-            openai: customOpenAIKey,
-            claude: customClaudeKey,
-            zen: customZenKey
+            gemini: customGeminiKey
           },
           ideaState.isCompleted
         );
@@ -634,34 +601,13 @@ export default function App() {
     return "bg-natural-dark";
   };
 
-  // Model display names
-  const modelDisplayNames: Record<string, string> = {
-    gemini: "Gemini",
-    gpt: "ChatGPT",
-    claude: "Claude",
-    zen: "Zen"
-  };
-
   // Check if current model has API key
-  const isActiveModelConfigured =
-    (ideaState.targetModel === 'gemini' && (hasSystemKey || !!customGeminiKey)) ||
-    (ideaState.targetModel === 'gpt' && !!customOpenAIKey) ||
-    (ideaState.targetModel === 'claude' && !!customClaudeKey) ||
-    (ideaState.targetModel === 'zen' && !!customZenKey);
+  const isActiveModelConfigured = hasSystemKey || !!customGeminiKey;
 
   const getActiveKeyInfo = () => {
-    const name = modelDisplayNames[ideaState.targetModel] || "AI";
-
-    if (ideaState.targetModel === 'gemini') {
-      if (hasSystemKey) return "System Gemini Key (Active)";
-      if (customGeminiKey) return "Custom Gemini Key (Active)";
-    }
-    if (ideaState.targetModel === 'gpt' && customOpenAIKey) return "Custom OpenAI Key (Active)";
-    if (ideaState.targetModel === 'claude' && customClaudeKey) return "Custom Claude Key (Active)";
-    if (ideaState.targetModel === 'zen' && customZenKey) return "Custom Zen Key (Active)";
-
-    // Current model has no key
-    return `${name} API not added, you can change API in setting`;
+    if (hasSystemKey) return "System Gemini Key (Active)";
+    if (customGeminiKey) return "Custom Gemini Key (Active)";
+    return "Gemini API not added, add key in Settings";
   };
 
   const renderControlPanel = (isOnMobileDrawer: boolean = false) => {
@@ -692,34 +638,6 @@ export default function App() {
           <p className="text-[11px] text-[var(--color-natural-muted)] mt-2">
             As each specification is clarified, the maturity score increases. Aim for 80%+ to generate a premium-grade instructing prompt.
           </p>
-
-          {/* Target model selector */}
-          <div className="mt-4 pt-4 border-t border-natural-border">
-            <label className="text-[10px] uppercase tracking-wider font-semibold text-[var(--color-natural-light-muted)] block mb-2">
-              Target Output Framework
-            </label>
-            <div className="grid grid-cols-4 gap-1.5 bg-[var(--color-natural-subtle)] border border-natural-border p-1 rounded-lg">
-              {[
-                { id: "gemini", label: "Gemini" },
-                { id: "gpt", label: "ChatGPT" },
-                { id: "claude", label: "Claude" },
-                { id: "zen", label: "Zen" }
-              ].map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => handleModelChange(item.id as any)}
-                  className={`text-[11px] font-medium py-1.5 rounded-md transition cursor-pointer ${
-                    ideaState.targetModel === item.id
-                      ? "bg-[var(--color-natural-card)] text-[var(--color-natural-dark)] shadow-xs border border-natural-border font-semibold"
-                      : "text-[var(--color-natural-muted)] hover:text-[var(--color-natural-dark)]"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Chat Workbook History Panel */}
@@ -1406,57 +1324,6 @@ export default function App() {
                     />
                     <span className="text-[9px] text-[var(--color-natural-light-muted)] block mt-0.5">
                       Fully supports CORS client-side browser requests out-of-the-box.
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] tracking-wider uppercase font-bold text-[var(--color-natural-muted)] block mb-1">
-                      OpenAI API Key
-                    </label>
-                    <input
-                      name="oKey"
-                      type="password"
-                      value={customOpenAIKey}
-                      onChange={(e) => applyOpenAIKey(e.target.value)}
-                      placeholder="sk-..."
-                      className="w-full bg-[var(--color-natural-card)] border border-natural-border p-2 rounded text-xs focus:ring-1 focus:ring-natural-accent focus:outline-none"
-                    />
-                    <span className="text-[9px] text-[var(--color-natural-light-muted)] block mt-0.5">
-                      Used for ChatGPT formatting. Supports browser-side API headers.
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] tracking-wider uppercase font-bold text-[var(--color-natural-muted)] block mb-1">
-                      Claude (Anthropic) API Key
-                    </label>
-                    <input
-                      name="cKey"
-                      type="password"
-                      value={customClaudeKey}
-                      onChange={(e) => applyClaudeKey(e.target.value)}
-                      placeholder="sk-ant-..."
-                      className="w-full bg-[var(--color-natural-card)] border border-natural-border p-2 rounded text-xs focus:ring-1 focus:ring-natural-accent focus:outline-none"
-                    />
-                    <span className="text-[9px] text-[var(--color-natural-light-muted)] block mt-0.5">
-                      Used for Claude XML blocks. Safe and secure.
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] tracking-wider uppercase font-bold text-[var(--color-natural-muted)] block mb-1">
-                      Opencode Zen API Key
-                    </label>
-                    <input
-                      name="zKey"
-                      type="password"
-                      value={customZenKey}
-                      onChange={(e) => applyZenKey(e.target.value)}
-                      placeholder="Zen API Key..."
-                      className="w-full bg-[var(--color-natural-card)] border border-natural-border p-2 rounded text-xs focus:ring-1 focus:ring-natural-accent focus:outline-none"
-                    />
-                    <span className="text-[9px] text-[var(--color-natural-light-muted)] block mt-0.5">
-                      Opencode Zen (big-pickle model). OpenAI-compatible format.
                     </span>
                   </div>
                 </div>

@@ -8,8 +8,6 @@ import {
   sanitizeRefineResponse as sanitizeRefineResponseBase,
   repairJson,
   getAlternatingMessages,
-  buildClaudeMessages,
-  buildOpenAIMessages,
   buildGeminiContents,
   GEMINI_MODELS_TO_TRY
 } from "./src/shared";
@@ -29,7 +27,6 @@ app.use("/api/", limiter);
 app.get("/api/config/status", (req, res) => {
   res.json({
     hasSystemGeminiKey: false,
-    hasSystemZenKey: false,
   });
 });
 
@@ -46,10 +43,7 @@ app.post("/api/refine", async (req, res) => {
   const { 
     idea, 
     messages, 
-    customGeminiKey, 
-    customOpenAIKey, 
-    customClaudeKey,
-    customZenKey,
+    customGeminiKey,
     targetModel = 'general',
     forceGenerate = false 
   } = req.body;
@@ -162,182 +156,25 @@ app.post("/api/refine", async (req, res) => {
     return sanitizeRefineResponse(payload);
   }
 
-  // Helper function to try Claude
-  async function tryClaude(): Promise<any> {
-    if (!customClaudeKey) return null;
-    const systemInst = getSystemInstruction(targetModel);
-    const alternating = getAlternatingMessages(messages);
-    const claudeMessages: any[] = [];
-    for (let i = 0; i < alternating.length; i++) {
-      const m = alternating[i];
-      const role = m.role === 'model' ? 'assistant' : 'user';
-      if (i === alternating.length - 1) {
-        let contentText = m.content;
-        if (forceGenerate) {
-          contentText += `\n\n[SYSTEM DIRECTIVE]: Please finalize the interaction immediately. Set isCompleted to true, fill out all captured aspects, analyze the final maturity score, and compile the final Prompt in the "finalPrompt" field.`;
-        } else {
-          contentText += `\n\n[SYSTEM DIRECTIVE]: Analyze the user's newest input, update the captured aspects, analyze and calculate the prompt's maturity score from 0-100 following the rubric, specify what details are missing, formulate exactly one clarifying question or coaching suggestion, and output them in the required JSON format.`;
-        }
-        claudeMessages.push({ role, content: contentText });
-      } else {
-        claudeMessages.push({ role, content: m.content });
-      }
-    }
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": customClaudeKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 4000,
-        system: systemInst,
-        messages: claudeMessages
-      })
-    });
-
-    if (!response.ok) {
-      const errVal = await response.text();
-      throw new Error(`Claude API error: ${response.status} ${errVal}`);
-    }
-
-    const info = await response.json();
-    const content = info.content?.[0]?.text;
-    if (!content) {
-      throw new Error("No textual response from Claude API.");
-    }
-
-    const cleanedContent = content.trim();
-    const repaired = repairJson(cleanedContent);
-    const parsed = JSON.parse(repaired);
-    return sanitizeRefineResponse(parsed);
-  }
-
-  // Helper function to try OpenAI
-  async function tryOpenAI(): Promise<any> {
-    if (!customOpenAIKey) return null;
-    const openAIMessages = buildOpenAIMessages(getAlternatingMessages(messages), getSystemInstruction(targetModel), forceGenerate);
-
-    const openAIResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${customOpenAIKey}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        response_format: { type: "json_object" },
-        messages: openAIMessages
-      })
-    });
-
-    if (!openAIResponse.ok) {
-      const errorData = await openAIResponse.json();
-      throw new Error(errorData.error?.message || `OpenAI returned status ${openAIResponse.status}`);
-    }
-
-    const openAIData = await openAIResponse.json();
-    const content = openAIData.choices[0].message.content;
-    const cleanedContent = content.trim();
-    const repaired = repairJson(cleanedContent);
-    const parsed = JSON.parse(repaired);
-    return sanitizeRefineResponse(parsed);
-  }
-
-  // Helper function to try Zen
-  async function tryZen(): Promise<any> {
-    if (!customZenKey) return null;
-    const cleanKey = customZenKey.replace(/[^\x20-\x7E]/g, '').trim();
-    if (!cleanKey) return null;
-    const zenMessages = buildOpenAIMessages(getAlternatingMessages(messages), getSystemInstruction(targetModel), forceGenerate);
-
-    try {
-      const zenResponse = await fetch("https://opencode.ai/zen/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${cleanKey}`
-        },
-        body: JSON.stringify({
-          model: "big-pickle",
-          response_format: { type: "json_object" },
-          messages: zenMessages
-        })
-      });
-
-      if (!zenResponse.ok) {
-        const errorData = await zenResponse.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `Zen returned status ${zenResponse.status}`);
-      }
-
-      const zenData = await zenResponse.json();
-      const content = zenData.choices[0].message.content;
-      const cleanedContent = content.trim();
-      const repaired = repairJson(cleanedContent);
-      const parsed = JSON.parse(repaired);
-      return sanitizeRefineResponse(parsed);
-    } catch (err: any) {
-      if (err.message?.includes('fetch') || err.message?.includes('ENOTFOUND') || err.message?.includes('ECONNREFUSED') || err.message?.includes('NetworkError')) {
-        throw new Error('Zen: Network unavailable - opencode.ai may be down or unreachable');
-      }
-      throw err;
-    }
-  }
-
-  // Build provider chain based on target model preference
-  // Only include Zen when explicitly selected as target model
-  const providerChain: Array<{ name: string; fn: () => Promise<any> }> = [];
-  
-  if (targetModel === 'gemini') {
-    providerChain.push({ name: 'Gemini', fn: tryGemini });
-    if (customOpenAIKey) providerChain.push({ name: 'OpenAI', fn: tryOpenAI });
-    if (customClaudeKey) providerChain.push({ name: 'Claude', fn: tryClaude });
-  } else if (targetModel === 'claude') {
-    providerChain.push({ name: 'Claude', fn: tryClaude });
-    if (customGeminiKey || process.env.GEMINI_API_KEY) providerChain.push({ name: 'Gemini', fn: tryGemini });
-    if (customOpenAIKey) providerChain.push({ name: 'OpenAI', fn: tryOpenAI });
-  } else if (targetModel === 'gpt') {
-    providerChain.push({ name: 'OpenAI', fn: tryOpenAI });
-    if (customGeminiKey || process.env.GEMINI_API_KEY) providerChain.push({ name: 'Gemini', fn: tryGemini });
-    if (customClaudeKey) providerChain.push({ name: 'Claude', fn: tryClaude });
-  } else if (targetModel === 'zen') {
-    providerChain.push({ name: 'Zen', fn: tryZen });
-    if (customGeminiKey || process.env.GEMINI_API_KEY) providerChain.push({ name: 'Gemini', fn: tryGemini });
-    if (customClaudeKey) providerChain.push({ name: 'Claude', fn: tryClaude });
-    if (customOpenAIKey) providerChain.push({ name: 'OpenAI', fn: tryOpenAI });
-  } else {
-    // Default order for general/other models
-    if (customGeminiKey || process.env.GEMINI_API_KEY) providerChain.push({ name: 'Gemini', fn: tryGemini });
-    if (customClaudeKey) providerChain.push({ name: 'Claude', fn: tryClaude });
-    if (customOpenAIKey) providerChain.push({ name: 'OpenAI', fn: tryOpenAI });
-  }
-
-  // Validate that at least one provider is configured
-  if (providerChain.length === 0) {
+  // Use Gemini only
+  if (!customGeminiKey && !process.env.GEMINI_API_KEY) {
     return res.status(400).json({ 
-      error: "No AI providers configured. Please add an API key in Settings." 
+      error: "No Gemini API key configured. Please add an API key in Settings." 
     });
   }
 
-  // Try each provider sequentially until one succeeds
-  const errors: string[] = [];
-  for (const provider of providerChain) {
-    try {
-      const result = await provider.fn();
-      if (result) return res.json(result);
-    } catch (err: any) {
-      errors.push(`${provider.name}: ${err.message}`);
-      console.error(`${provider.name} refinement error:`, err);
-    }
+  try {
+    const result = await tryGemini();
+    if (result) return res.json(result);
+  } catch (err: any) {
+    console.error('Gemini refinement error:', err);
+    return res.status(500).json({ 
+      error: `Gemini failed: ${err.message}. Check your API key in Settings.` 
+    });
   }
 
-  // All providers failed
-  const configuredNames = providerChain.map(p => p.name);
   return res.status(500).json({ 
-    error: `All AI providers failed: ${errors.join('; ')}. Configured providers: ${configuredNames.join(', ')}. Check your API keys in Settings.` 
+    error: "Gemini failed to respond. Check your API key in Settings." 
   });
 });
 

@@ -24,28 +24,6 @@ export function appendSystemDirective(content: string, forceComplete: boolean): 
   return content + (forceComplete ? SYSTEM_DIRECTIVE_FINALIZE : SYSTEM_DIRECTIVE_ANALYZE);
 }
 
-export function buildClaudeMessages(alternating: AlternatingMessage[], forceComplete: boolean) {
-  const messages: any[] = [];
-  for (let i = 0; i < alternating.length; i++) {
-    const m = alternating[i];
-    const role = m.role === 'model' ? 'assistant' : 'user';
-    const contentText = i === alternating.length - 1 ? appendSystemDirective(m.content, forceComplete) : m.content;
-    messages.push({ role, content: contentText });
-  }
-  return messages;
-}
-
-export function buildOpenAIMessages(alternating: AlternatingMessage[], systemInstruction: string, forceComplete: boolean) {
-  const messages: any[] = [{ role: 'system', content: systemInstruction }];
-  for (let i = 0; i < alternating.length; i++) {
-    const m = alternating[i];
-    const role = m.role === 'model' ? 'assistant' : 'user';
-    const contentText = i === alternating.length - 1 ? appendSystemDirective(m.content, forceComplete) : m.content;
-    messages.push({ role, content: contentText });
-  }
-  return messages;
-}
-
 export function buildGeminiContents(alternating: AlternatingMessage[], forceComplete: boolean) {
   const contents: any[] = [];
   for (let i = 0; i < alternating.length; i++) {

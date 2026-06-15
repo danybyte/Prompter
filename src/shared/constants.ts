@@ -24,10 +24,7 @@ export const SUGGESTION_CHIPS = {
   ]
 };
 export const MODEL_DISPLAY_NAMES: Record<string, string> = {
-  gemini: "Gemini",
-  gpt: "ChatGPT",
-  claude: "Claude",
-  zen: "Zen"
+  gemini: "Gemini"
 };
 export const GEMINI_MODELS_TO_TRY = [
   "gemini-2.0-flash",
@@ -36,9 +33,6 @@ export const GEMINI_MODELS_TO_TRY = [
 ];
 export const LOCAL_STORAGE_KEYS = {
   geminiKey: "prompter_custom_gemini_key",
-  openaiKey: "prompter_custom_openai_key",
-  claudeKey: "prompter_custom_claude_key",
-  zenKey: "prompter_custom_zen_key",
   theme: "prompter_settings_theme",
   fontSize: "prompter_settings_fontSize",
   darkMode: "prompter_settings_darkMode",
