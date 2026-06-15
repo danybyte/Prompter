@@ -91,7 +91,7 @@ export async function handleOnlineRefine(
         return null;
       }
       const geminiContents = buildGeminiContents(alternating, forceComplete);
-      const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"];
+      const models = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite"];
       let lastErr: Error | null = null;
       for (const model of models) {
         try {
