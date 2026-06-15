@@ -1,20 +1,36 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+<img src="favicon.png" alt="Prompter" width="100" height="100" />
 
-# Run and deploy your AI Studio app
+# Prompter
 
-This contains everything you need to run your app locally.
+## Prompter is a opensource project that can make your idea to a powerful prompt to make them with AIs.
 
-View your app in AI Studio: https://ai.studio/apps/31665e59-993b-49c6-af6f-1659d0cb0e45
+The user fully explains the main idea to the AI, the AI ​​understands the idea and tries to add more details to that idea, for example, if the user wants to make a photo, it asks the user to tell him the type of photo (realistic, anime...) or the technologies he wants to use for a site. When Clarified reaches 100%, the user receives the final prompt
 
-## Run Locally
+## How to Run
 
-**Prerequisites:**  Node.js
+Install dependencies:
 
+```bash
+npm install
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Start the dev server (port 3000):
+
+```bash
+npm run dev
+```
+
+Then open [local on 3000 port](127.0.0.1:3000) in browser
+
+## How to Get an API Key
+
+You need a **Google Gemini API key**. You can provide it in two ways:
+1. **Get free API** Get your free key at [Google AI Studio](https://aistudio.google.com/apikey).
+
+2. **Add API key** 
+- **via the app UI** — Open Settings in the app and paste your key.
+- **via environment variable** — Create a `.env` file in the project root:
+
+   ```
+   GEMINI_API_KEY=your_api_key_here
+   ```

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Sparkles,
   Send,
   Copy,
   Check,
@@ -20,7 +19,7 @@ import {
   Menu,
   CheckCircle2
 } from "lucide-react";
-import { ChatMessage, IdeaState, RefineResponse } from "./types";
+import { ChatMessage, IdeaState } from "./types";
 import { LOCAL_STORAGE_KEYS, SUGGESTION_CHIPS } from "./shared";
 import { handleOnlineRefine } from "./utils/aiRefiner";
 
@@ -540,43 +539,6 @@ export default function App() {
     if (lastSentInputRef.current) {
       setShowRetry(false);
       handleRefine(lastSentInputRef.current);
-    }
-  };
-
-  const handleModelChange = async (model: 'gemini') => {
-    setIdeaState(prev => ({ ...prev, targetModel: model }));
-
-    const hasKey = hasSystemKey || !!customGeminiKey;
-    if (messages.length > 0 && hasKey) {
-      setLoadingSessionId(activeSessionId);
-      try {
-        const data = await handleOnlineRefine(
-          messages,
-          {
-            ...ideaState,
-            targetModel: model
-          },
-          {
-            gemini: customGeminiKey
-          },
-          ideaState.isCompleted
-        );
-
-        setIdeaState(prev => ({
-          ...prev,
-          aspects: data.aspects || {},
-          progressScore: Math.min(data.progressScore, 100),
-          isCompleted: data.isCompleted,
-          finalPrompt: data.finalPrompt
-        }));
-      } catch (err: any) {
-        console.error("Failed to re-compile layout formats:", err);
-        if (err.message && err.message.includes('API')) {
-          setWarningMsg("API key error. Please check your keys in Settings.");
-        }
-      } finally {
-        setLoadingSessionId(null);
-      }
     }
   };
 

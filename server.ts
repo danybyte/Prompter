@@ -5,11 +5,10 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import {
   getSystemInstruction,
-  sanitizeRefineResponse as sanitizeRefineResponseBase,
+  sanitizeRefineResponse,
   repairJson,
   getAlternatingMessages,
-  buildGeminiContents,
-  GEMINI_MODELS_TO_TRY
+  buildGeminiContents
 } from "./src/shared";
 
 const app = express();
@@ -32,28 +31,18 @@ app.get("/api/config/status", (req, res) => {
 
 
 
-// Re-export sanitize with server-specific fallback
-function sanitizeRefineResponse(payload: any) {
-  const result = sanitizeRefineResponseBase(payload);
-  return result;
-}
-
 // REST Endpoint: Idea Refinement
 app.post("/api/refine", async (req, res) => {
   const { 
     idea, 
     messages, 
     customGeminiKey,
-    targetModel = 'general',
     forceGenerate = false 
   } = req.body;
 
   if (!idea) {
     return res.status(400).json({ error: "An initial idea is required." });
   }
-
-  // Collect configured providers
-  const configuredProviders: Array<{ name: string; fn: () => Promise<any> }> = [];
 
   // Helper function to try Gemini
   async function tryGemini(): Promise<any> {
@@ -69,7 +58,7 @@ app.post("/api/refine", async (req, res) => {
       }
     });
 
-    const systemPromptMessage = getSystemInstruction(targetModel);
+    const systemPromptMessage = getSystemInstruction();
     const contentsPayload = buildGeminiContents(getAlternatingMessages(messages), forceGenerate);
 
     const modelsToTry = [

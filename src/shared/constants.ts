@@ -1,4 +1,3 @@
-
 export const SYSTEM_DIRECTIVE_ANALYZE = `
 [SYSTEM DIRECTIVE]: Analyze the user's newest input, update the captured aspects, analyze and calculate the prompt's maturity score from 0-100 following the rubric, specify what details are missing, formulate exactly one clarifying question or coaching suggestion, and output them in the required JSON format.`;
 export const SYSTEM_DIRECTIVE_FINALIZE = `
@@ -23,14 +22,7 @@ export const SUGGESTION_CHIPS = {
     "Generate my prompt now with current state"
   ]
 };
-export const MODEL_DISPLAY_NAMES: Record<string, string> = {
-  gemini: "Gemini"
-};
-export const GEMINI_MODELS_TO_TRY = [
-  "gemini-2.0-flash",
-  "gemini-2.0-flash-lite",
-  "gemini-1.5-flash"
-];
+
 export const LOCAL_STORAGE_KEYS = {
   geminiKey: "prompter_custom_gemini_key",
   theme: "prompter_settings_theme",
@@ -40,7 +32,7 @@ export const LOCAL_STORAGE_KEYS = {
 } as const;
 
 export const API_ERROR_MESSAGES: Record<number, string> = {
-  429: "Rate limit reached. The AI service is temporarily unavailable. Try again in a moment, or add another provider key in Settings for automatic fallback.",
+  429: "Rate limit reached. The AI service is temporarily unavailable. Try again in a moment.",
   401: "Invalid API key. Please check your key in Settings and try again.",
   403: "Access denied. Your API key may not have permission for this model.",
   500: "The AI service encountered an internal error. Please try again.",

@@ -1,6 +1,0 @@
-{
-  "name": "Prompter",
-  "description": "make your idea to a good prompt then good result",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

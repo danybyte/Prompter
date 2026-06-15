@@ -1,4 +1,4 @@
-import { ChatMessage, IdeaState, RefinedAspects, RefineResponse } from "../types";
+import { ChatMessage, IdeaState, RefineResponse } from "../types";
 import {
   repairJson,
   getSystemInstruction,
@@ -17,10 +17,9 @@ export async function handleOnlineRefine(
   keys: { gemini: string },
   forceComplete: boolean = false
 ): Promise<RefineResponse> {
-  const targetModel = currentState.targetModel || 'general';
   const operationalIdea = currentState.originalIdea || (messages[0]?.content || '');
 
-  const systemInst = getSystemInstruction(targetModel);
+  const systemInst = getSystemInstruction();
   const alternating = getAlternatingMessages(messages);
   const errors: string[] = [];
 
@@ -33,7 +32,6 @@ export async function handleOnlineRefine(
         idea: operationalIdea,
         messages,
         customGeminiKey: keys.gemini,
-        targetModel,
         forceGenerate: forceComplete
       })
     });
