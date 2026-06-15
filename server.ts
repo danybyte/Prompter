@@ -187,7 +187,7 @@ async function startServer() {
     }
 
     app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Idea to Prompt Server configured on http://0.0.0.0:${PORT}`);
+      console.log(`Prompter Server configured on http://0.0.0.0:${PORT}`);
     });
   } catch (err) {
     console.error("CRITICAL: Failed to start server:", err);
